@@ -1,0 +1,35 @@
+# port to listen to
+PORT=9187
+# script to reply to requests
+# escape all $vars with \ between EOFs 
+# unless you want them to get expanded at paste time
+cat << EOF > ./stat_statements.sh
+#!/usr/bin/env bash
+while read line; do 
+  if [[ \$line =~ GET./.*HTTP ]]; then
+    # treat value after first / as parameter
+    webparam=\${line##GET /};
+    webparam=\${webparam%% HTTP*};
+    break;
+  fi
+done;
+# log to console. plain echo will not work!
+echo "$(date "+%Y-%m-%dT%T") - \$webparam" > /dev/tty
+# check param before inserting into sql
+if [[ \$webparam =~ ^-?[0-9]+$ ]];then
+  query="
+    select COALESCE(
+      jsonb_pretty(json_agg(pss)::jsonb), 
+      'queryid not found'
+    )
+    from pg_stat_statements pss 
+    where queryid = \${webparam};"
+  echo -e "HTTP/1.1 200 OK\n\n";
+  timeout 2 psql -U postgres -qtAX -c "\$query" || true
+else
+    echo -e "HTTP/1.1 403 Forbidden\n\n";
+    echo -e "URL should look like http://$(hostname):$PORT/<queryid>";
+fi
+EOF
+chmod +x ./stat_statements.sh
+while true ; do nc -l -p $PORT -e ./stat_statements.sh ; done
