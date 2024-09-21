@@ -29,7 +29,7 @@ if [[ \$webparam =~ ^-?[0-9]+$ ]];then
     where queryid = \$webparam;"
   echo -e "HTTP/1.1 200 OK\n\n";
   # actual response
-  timeout 2 psql -U postgres -qtAX -c "\$query" || true
+  timeout 2 sudo -u postgres psql -qtAX -c "\$query" || true
 else
     echo -e "HTTP/1.1 403 Forbidden\n\n";
     echo -e "URL should look like http://$(hostname):$port/<queryid>";
