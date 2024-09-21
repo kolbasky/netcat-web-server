@@ -1,9 +1,12 @@
+#!/usr/bin/env bash
 # port to listen to
-PORT=9187
+port=9187
 # script to reply to requests
 # escape all $vars with \ between EOFs 
 # unless you want them to get expanded at paste time
-cat << EOF > ./stat_statements.sh
+script=$(mktemp)
+trap "rm -f $script" EXIT INT TERM QUIT ERR
+cat << EOF > $script
 #!/usr/bin/env bash
 while read line; do 
   if [[ \$line =~ GET./.*HTTP ]]; then
@@ -14,7 +17,7 @@ while read line; do
   fi
 done;
 # log to console. plain echo will not work!
-echo "$(date "+%Y-%m-%dT%T") - \$webparam" > /dev/tty
+echo "\$(date "+%Y-%m-%dT%T") - \$webparam" > /dev/tty
 # check param before inserting into sql
 if [[ \$webparam =~ ^-?[0-9]+$ ]];then
   query="
@@ -23,13 +26,14 @@ if [[ \$webparam =~ ^-?[0-9]+$ ]];then
       'queryid not found'
     )
     from pg_stat_statements pss 
-    where queryid = \${webparam};"
+    where queryid = \$webparam;"
   echo -e "HTTP/1.1 200 OK\n\n";
+  # actual response
   timeout 2 psql -U postgres -qtAX -c "\$query" || true
 else
     echo -e "HTTP/1.1 403 Forbidden\n\n";
-    echo -e "URL should look like http://$(hostname):$PORT/<queryid>";
+    echo -e "URL should look like http://$(hostname):$port/<queryid>";
 fi
 EOF
-chmod +x ./stat_statements.sh
-while true ; do nc -l -p $PORT -e ./stat_statements.sh ; done
+chmod +x $script
+nc -k -l -p $port -c "$script"  
